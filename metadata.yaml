@@ -1,5 +1,5 @@
 homepage: "https://www.bloomreach.com/en/products/discovery"
 documentation: "https://github.com/newnorthdigital/bloomreach-web-tag/blob/main/README.md"
 versions:
-  - sha: REPLACE_WITH_COMMIT_SHA
+  - sha: d0e2131c00eed9c5788a9a17b63826ae037cc633
     changeNotes: "Initial release."
