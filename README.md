@@ -11,7 +11,8 @@
 - Reads GA4 `ecommerce` from the dataLayer as a fallback: product ID on product pages and add to cart, and order ID, value, currency and basket on the conversion page.
 - Handles GA4 catalogs where `item_id` is the SKU and `item_group_id` the product ID.
 - Leaves empty fields out, so Bloomreach never receives `"undefined"` or `"null"` values.
-- Test data and Integration mode (`debug=true`) switches for staging and validation.
+- Test data and Integration mode (`debug=true`) switches for staging and validation. In GTM Preview, `debug=true` is added automatically.
+- Page types are trimmed and lowercased (`Product ` becomes `product`). Values Bloomreach does not accept (for example `pdp` or an empty variable) are sent as `other`; with debug logging on, the console says so.
 - Built-in Consent Mode gate on `analytics_storage`.
 
 ## Web or server?
@@ -35,7 +36,7 @@ There is also a [server-side version](https://github.com/newnorthdigital/bloomre
    - If the basket has items but no value, the tag sends the sum of price × quantity, because Bloomreach's tracker drops a conversion without `basket_value`.
 2. **Single page apps.** Add a second tag with Pixel type **Virtual page view** and fire it on route changes (History Change or a custom dataLayer event). If the tracker has not started yet, the virtual page view is sent as a normal page view. In a single page app, `ecommerce.items` can still hold the previous product, so fill product fields with variables instead of the GA4 fallback.
 3. **Event tags.** One tag per event: **Add to cart** on your add_to_cart event, **Search submit** when a search is submitted, **Suggest click** when an autosuggest term is clicked, **Quick view** when a quick view opens. Event tags use the tracker loaded by the Page view tag. Bloomreach's tracker starts at the window load event (or right away if the page has already finished parsing), so tag sequencing is not enough: an event before that fails (the tag reports failure and logs why in preview). Clicks and interactions after the page has loaded are fine.
-4. **Validate.** Tick **Send as debug events** and watch Event diagnostics in Integration mode, or use Bloomreach's Pixel Validator Chrome extension. Untick before publishing. Tick **Mark as test data** on staging only.
+4. **Validate.** Open GTM Preview: the tag then sends debug events on its own, which show up within seconds in Event diagnostics, Integration mode. Bloomreach's Pixel Validator Chrome extension works too. Tick **Send as debug events** only to test outside Preview, and untick it before publishing. Tick **Mark as test data** on staging only.
 
 ## Field reference
 
@@ -57,7 +58,7 @@ There is also a [server-side version](https://github.com/newnorthdigital/bloomre
 | Catalogs | `catalogs` | Comma-separated names, or a variable returning Bloomreach's catalog array. Content pages, and search when you have a content catalog. |
 | GA4 item ID mapping | | Whether GA4 `item_id` is the product ID or the SKU. |
 | Additional parameters | any | E.g. `customer_tier`, `customer_country`, `customer_geo`, `customer_profile`, `tms`. |
-| Send as debug events | `debug=true` | Integration mode in Event diagnostics. |
+| Send as debug events | `debug=true` | Integration mode in Event diagnostics. Automatic in GTM Preview. |
 | Mark as test data | `test_data=true` | Staging only. |
 
 ## Permissions
@@ -67,6 +68,7 @@ There is also a [server-side version](https://github.com/newnorthdigital/bloomre
 - Reads `ecommerce.*` from the dataLayer.
 - Reads the page URL (for `orig_ref_url` on virtual page views).
 - Reads `analytics_storage` consent state.
+- Reads container data (to detect GTM Preview).
 - Logs to the console in debug and preview mode only.
 
 ## Resources

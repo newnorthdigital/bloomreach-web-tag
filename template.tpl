@@ -71,10 +71,17 @@ ___TEMPLATE_PARAMETERS___
     "name": "accountId",
     "displayName": "Account ID",
     "simpleValueType": true,
-    "help": "Your Bloomreach Discovery account ID (acct_id), e.g. 6702.",
+    "help": "Your Bloomreach Discovery account ID (acct_id), numeric, e.g. 6702.",
     "valueValidators": [
       {
         "type": "NON_EMPTY"
+      },
+      {
+        "type": "REGEX",
+        "args": [
+          "^\\s*([0-9]+|\\{\\{.+\\}\\})\\s*$"
+        ],
+        "errorMessage": "The account ID is a number, e.g. 6702."
       }
     ],
     "alwaysInSummary": true
@@ -147,7 +154,7 @@ ___TEMPLATE_PARAMETERS___
         ],
         "simpleValueType": true,
         "defaultValue": "other",
-        "help": "Bloomreach page type. Use a variable (lookup table on page path or a dataLayer key) so one tag covers every page type."
+        "help": "Bloomreach page type. Use a variable (lookup table on page path or a dataLayer key) so one tag covers every page type. Values Bloomreach does not accept are sent as other."
       },
       {
         "type": "TEXT",
@@ -539,7 +546,7 @@ ___TEMPLATE_PARAMETERS___
         "checkboxText": "Send as debug events (Integration mode)",
         "simpleValueType": true,
         "defaultValue": false,
-        "help": "Adds debug=true. Events show up within seconds in Event diagnostics, Integration mode, and do not affect live search or reporting."
+        "help": "Adds debug=true on every hit. Events show up within seconds in Event diagnostics, Integration mode, and do not affect live search or reporting. In GTM Preview this happens automatically."
       },
       {
         "type": "CHECKBOX",
@@ -612,9 +619,15 @@ const makeTableMap = require('makeTableMap');
 const Object = require('Object');
 const isConsentGranted = require('isConsentGranted');
 const addConsentListener = require('addConsentListener');
+const getContainerVersion = require('getContainerVersion');
+
+// Page types Bloomreach accepts; anything else is sent as "other".
+const PTYPES = ['homepage', 'product', 'category', 'search', 'content', 'conversion', 'thematic', 'other'];
+const DIGITS = '0123456789';
+const isAccountId = (v) => v.length > 0 && v.split('').every((c) => DIGITS.indexOf(c) !== -1);
 
 const pixelType = data.pixelType || 'pageview';
-const accountId = data.accountId ? makeString(data.accountId) : '';
+const accountId = data.accountId ? makeString(data.accountId).trim() : '';
 
 const debugLog = (msg) => {
   if (data.debug) {
@@ -726,7 +739,10 @@ const buildBase = () => {
   if (data.testData) {
     d.test_data = true;
   }
-  if (data.debugMode) {
+  // GTM Preview sends debug events automatically, so test hits land in
+  // Bloomreach's Integration mode and nobody has to untick a box before publishing.
+  const cv = getContainerVersion();
+  if (data.debugMode || (cv && (cv.previewMode || cv.debugMode))) {
     d.debug = true;
   }
   if (data.extraParams && data.extraParams.length) {
@@ -738,7 +754,11 @@ const buildBase = () => {
 
 const buildPageData = () => {
   const d = buildBase();
-  const ptype = makeString(data.ptype || 'other');
+  let ptype = isSet(data.ptype) ? makeString(data.ptype).trim().toLowerCase() : 'other';
+  if (PTYPES.indexOf(ptype) === -1) {
+    debugLog('Warning: page type "' + ptype + '" is not a Bloomreach page type, sending "other"');
+    ptype = 'other';
+  }
   d.ptype = ptype;
   setIf(d, 'title', data.title);
 
@@ -872,8 +892,8 @@ const fire = () => {
   data.gtmOnSuccess();
 };
 
-if (!accountId) {
-  debugLog('Error: Account ID is required');
+if (!isAccountId(accountId)) {
+  debugLog('Error: Account ID must be the numeric Bloomreach account ID, got "' + accountId + '"');
   data.gtmOnFailure();
   return;
 }
@@ -913,6 +933,19 @@ ___WEB_PERMISSIONS___
           }
         }
       ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "read_container_data",
+        "versionId": "1"
+      },
+      "param": []
     },
     "clientAnnotations": {
       "isEditedByUser": true
@@ -1176,6 +1209,7 @@ scenarios:
       sku: 'S1',
       consentMode: 'off'
     };
+    mock('getContainerVersion', {previewMode: false, debugMode: false});
     let brData;
     let scriptUrl;
     mock('setInWindow', function(key, value, overwrite) {
@@ -1265,6 +1299,7 @@ scenarios:
       cat: 'Dresses',
       consentMode: 'off'
     };
+    mock('getContainerVersion', {previewMode: false, debugMode: false});
     let updated;
     let pageViews = 0;
     const tracker = {
@@ -1362,6 +1397,35 @@ scenarios:
     runCode(mockData);
     assertApi('gtmOnFailure').wasCalled();
     assertApi('gtmOnSuccess').wasNotCalled();
+- name: Unknown page type is sent as other
+  code: |-
+    mock('getContainerVersion', {previewMode: false, debugMode: false});
+    let brData;
+    mock('setInWindow', function(key, value, overwrite) { brData = value; return true; });
+    mock('injectScript', function(url, onSuccess, onFailure, cacheToken) { onSuccess(); });
+    runCode({pixelType: 'pageview', accountId: '6702', ptype: 'pdp', prodId: 'P1', consentMode: 'off'});
+    assertThat(brData).isEqualTo({acct_id: '6702', ptype: 'other'});
+- name: Page type from a variable is trimmed and lowercased
+  code: |-
+    mock('getContainerVersion', {previewMode: false, debugMode: false});
+    let brData;
+    mock('setInWindow', function(key, value, overwrite) { brData = value; return true; });
+    mock('injectScript', function(url, onSuccess, onFailure, cacheToken) { onSuccess(); });
+    runCode({pixelType: 'pageview', accountId: ' 6702', ptype: 'Category ', catId: 'C1', consentMode: 'off'});
+    assertThat(brData).isEqualTo({acct_id: '6702', ptype: 'category', cat_id: 'C1'});
+- name: GTM Preview sends debug events automatically
+  code: |-
+    mock('getContainerVersion', {previewMode: true, debugMode: false});
+    let brData;
+    mock('setInWindow', function(key, value, overwrite) { brData = value; return true; });
+    mock('injectScript', function(url, onSuccess, onFailure, cacheToken) { onSuccess(); });
+    runCode({pixelType: 'pageview', accountId: '6702', ptype: 'homepage', consentMode: 'off'});
+    assertThat(brData.debug).isEqualTo(true);
+- name: Non-numeric account ID fails
+  code: |-
+    runCode({pixelType: 'pageview', accountId: 'acct-6702', ptype: 'homepage', consentMode: 'off'});
+    assertApi('gtmOnFailure').wasCalled();
+    assertApi('injectScript').wasNotCalled();
 - name: Missing account ID fails
   code: |-
     runCode({pixelType: 'pageview', accountId: '', consentMode: 'off'});
