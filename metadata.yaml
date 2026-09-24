@@ -1,5 +1,7 @@
 homepage: "https://www.bloomreach.com/en/products/discovery"
 documentation: "https://github.com/newnorthdigital/bloomreach-web-tag/blob/main/README.md"
 versions:
+  - sha: b9ed23ba13c24286995b2564907389dd41a7fee8
+    changeNotes: "Page type validation (trimmed, lowercased, unknown values sent as other), numeric account ID check, automatic debug events in GTM Preview."
   - sha: d0e2131c00eed9c5788a9a17b63826ae037cc633
     changeNotes: "Initial release."
